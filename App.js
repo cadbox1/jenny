@@ -2,25 +2,29 @@ import React, { Component } from "react";
 import ReactDOM from "react-dom";
 import ReactDOMServer from "react-dom/server";
 
+import { Generator as HeroGenerator } from "./components/Hero.js";
+
 const baseFetch = System.fetch;
 
 const GENERATED_MODULE_NAME = "cool-module";
+
+let textFile;
 
 class App extends Component {
 	constructor(props) {
 		super(props);
 		this.handleUpdate = this.handleUpdate.bind(this);
 		this.handleAddFeature = this.handleAddFeature.bind(this);
-		this.handlePreview = this.handlePreview.bind(this);
 		this.handleRender = this.handleRender.bind(this);
+		this.handleSave = this.handleSave.bind(this);
 		this.state = {
 			rendered: "",
 			value: `import React from "react"
 
-const Heading = ({ children }) => <h1>{children}</h1>
+import Hero from "./components/Hero.js"
 
 const Page = () => <div>
-	<Heading>hello</Heading>
+	
 </div>
 	
 export default Page;
@@ -39,9 +43,18 @@ export default Page;
 		const value = evt.target.value;
 		this.setState({ value });
 	}
-	handleAddFeature() {
-		const feature = "\n<Heading>hello</Heading>";
-		this.setState(state => ({ value: state.value + feature }));
+	handleAddFeature(feature) {
+		const el = this.textarea;
+		var start = el.selectionStart;
+		var end = el.selectionEnd;
+		var text = el.value;
+		var before = text.substring(0, start);
+		var after = text.substring(end, text.length);
+		const value = before + feature + after;
+		this.setState({ value }, () => {
+			el.selectionStart = el.selectionEnd = start + feature.length;
+			el.focus();
+		});
 	}
 	getComponent() {
 		const normalizedName = SystemJS.normalizeSync(GENERATED_MODULE_NAME);
@@ -52,28 +65,55 @@ export default Page;
 			return React.createElement(module.default);
 		});
 	}
-	handlePreview() {
+	handleRender() {
 		this.getComponent().then(component => {
 			ReactDOM.render(component, document.getElementById("preview"));
 		});
 	}
-	handleRender() {
+	handleSave() {
 		this.getComponent().then(component => {
 			const rendered = ReactDOMServer.renderToStaticMarkup(component);
-			this.setState({ rendered });
+			var link = document.createElement("a");
+			link.setAttribute("download", "index.html");
+
+			var data = new Blob([rendered], { type: "text/html" });
+
+			// If we are replacing a previously generated file we need to
+			// manually revoke the object URL to avoid memory leaks.
+			if (textFile !== null) {
+				window.URL.revokeObjectURL(textFile);
+			}
+
+			textFile = window.URL.createObjectURL(data);
+
+			link.href = textFile;
+
+			document.body.appendChild(link);
+
+			// wait for the link to be added to the document
+			window.requestAnimationFrame(function() {
+				var event = new MouseEvent("click");
+				link.dispatchEvent(event);
+				document.body.removeChild(link);
+			});
 		});
 	}
 	render() {
 		const { value, rendered } = this.state;
-		const section = { display: "flex", flexGrow: 1, flexDirection: "column" };
+		const section = {
+			display: "flex",
+			flexGrow: 1,
+			flexDirection: "column",
+		};
 		return (
 			<div style={{ display: "flex", height: "100vh" }}>
 				<div style={section}>
 					<div>
 						<h1>Editor</h1>
-						<button onClick={this.handleAddFeature}>Add Feature</button>
+						<HeroGenerator onRender={this.handleAddFeature} />
 					</div>
 					<textarea
+						ref={ref => (this.textarea = ref)}
 						value={value}
 						onChange={this.handleUpdate}
 						style={{ flexGrow: 1 }}
@@ -82,11 +122,10 @@ export default Page;
 				<div style={section}>
 					<div>
 						<h1>Preview</h1>
-						<button onClick={this.handlePreview}>Preview</button>
 						<button onClick={this.handleRender}>Render</button>
+						<button onClick={this.handleSave}>Save As HTML</button>
 					</div>
-					<div id="preview" style={{ flexGrow: 1 }} />
-					<textarea value={rendered} style={{ flexGrow: 1 }} />
+					<div id="preview" style={{ flexGrow: 1, border: "1px solid #ccc" }} />
 				</div>
 			</div>
 		);
